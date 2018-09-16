@@ -1,0 +1,67 @@
+* metamorph
+Higher-order buffer transformations for Emacs.
+
+** Usage
+Say you're writing some lovely code for your new libc implementation:
+
+#+BEGIN_SRC c
+  void free(void* ptr) {
+    void* prev_freelist_ptr = (void*)*(size_t**)(ptr - 24);
+    void* next_freelist_ptr = (void*)*(size_t**)(ptr - 16);
+    size_t this_size = *(size_t*)(ptr - 8);
+
+    // Set prev->next to this->next and next->prev to this->prev
+    *(size_t*)(prev_freelist_ptr - 24) = next_freelist_ptr;
+    *(size_t*)(next_freelist_ptr - 16) = prev_freelist_ptr;
+  }
+#+END_SRC
+
+But all of a sudden, you want to add a new feature, and change the pointer
+offsets above:
+
+#+BEGIN_SRC c
+    void free(void* ptr) {
+      void* prev_freelist_ptr = (void*)*(size_t**)(ptr - 32);
+      void* next_freelist_ptr = (void*)*(size_t**)(ptr - 24);
+      size_t this_size = *(size_t*)(ptr - 16);
+      size_t magic_number = *(size_t*)(ptr - 8);
+
+      // Check for freelist corruption
+      assert(magic_number == 0xdeadbeefcafefade);
+
+      // Set prev->next to this->next and next->prev to this->prev
+      *(size_t*)(prev_freelist_ptr - 32) = next_freelist_ptr;
+      *(size_t*)(next_freelist_ptr - 24) = prev_freelist_ptr;
+    }
+#+END_SRC
+
+You could use ~replace-string~ three times for each number literal in your code
+Or, you could use ~(metamorph-map-region "[0-9]+" "(- %! 8)")~.
+
+Metamorph provides a powerful way to transform your buffer contents - perform
+base conversions, increment numbers, transform every nth match, and more. Use
+any Emacs Lisp function to transform your data - the sky is the limit.
+
+Metamorph's principal function, ~metamorph-map-region~ will prompt you for a
+regular expression, and a lisp expression. It will then replace everything
+matching the regular expression in your region with the result of the lisp
+expression. You can use the following variables in the lisp expression:
+
+- ~%~ is the raw matched string without any additional processing
+- ~%!~ is the value of the string as a lisp expression
+- ~%0~ is an index which starts at zero, and increments for each match
+** Security
+Metamorph reads all strings matching the regular expression, and will gladly
+evaluate them as Lisp code if ~%!~ is included in the transformation expression.
+Because of the security implications of such behavior, an alternative function,
+~metamorph-map-region-safe~, does not read or evaluate any buffer contents
+without explicit user direction, and is therefore safe to use on
+untrusted buffers. ~metamorph-map-region-safe~ provides the following arguments:
+
+- ~%~ is the raw matched string without any additional processing
+- ~%i~ is the matched string's value as an integer
+- ~%0~ is an index which starts at zero, and increments for each match
+
+Calling ~(read %)~ in your transformation expression will nullify the safeguards
+in ~metamorph-map-region-safe~ and carries the same security implications as
+~metamorph-map-region~.
