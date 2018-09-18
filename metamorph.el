@@ -6,7 +6,7 @@
 ;; URL: http://github.com/AdamNiederer/metamorph
 ;; Version: 0.1
 ;; Keywords: metaprogramming
-;; Package-Requires: ((emacs "24.4") (s "1.11.0"))
+;; Package-Requires: ((emacs "24.4"))
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -30,8 +30,6 @@
 ;; "metamorph--".
 
 ;;; Code:
-
-(require 's)
 
 (defun metamorph--stringify (obj)
   "If OBJ is a string, pass it through.  Otherwise, turn it into a string."
