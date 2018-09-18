@@ -35,6 +35,7 @@
   "If OBJ is a string, pass it through.  Otherwise, turn it into a string."
   (if (stringp obj) obj (prin1-to-string obj)))
 
+;;;###autoload
 (defun metamorph-map-region (regex transform)
   "Replace all strings matching REGEX, with the result of TRANSFORM.
 
@@ -62,6 +63,7 @@ buffers containing Emacs Lisp code."
         (setq search-extent (+ search-extent (- (length output) (length %))))
         (setq match-index (1+ match-index))))))
 
+;;;###autoload
 (defun metamorph-map-region-safe (regex transform)
   "Replace all strings matching REGEX, with the result of TRANSFORM.
 
