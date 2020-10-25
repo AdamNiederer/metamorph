@@ -37,11 +37,14 @@
 
 (defmacro metamorph--save-everything (&rest exprs)
   "Perform EXPRS, preserving as much global state as possible."
-  `(save-match-data
-     (save-mark-and-excursion
-       (save-window-excursion
-         (with-demoted-errors "metamorph: error in user-provided transformation: %s"
-           ,@exprs)))))
+  `(save-current-buffer
+     (save-window-excursion
+       (save-restriction
+         (save-match-data
+           (save-mark-and-excursion
+             (save-window-excursion
+               (with-demoted-errors "metamorph: error in user-provided transformation: %s"
+                 ,@exprs))))))))
 
 ;;;###autoload
 (defun metamorph-map-region-unsafe (regex transform)
