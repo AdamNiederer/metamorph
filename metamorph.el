@@ -6,7 +6,7 @@
 ;; URL: http://github.com/AdamNiederer/metamorph
 ;; Version: 0.1
 ;; Keywords: metaprogramming wp
-;; Package-Requires: ((emacs "24.4") (ov "1.0.6"))
+;; Package-Requires: ((emacs "26.1") (ov "1.0.6"))
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -37,7 +37,8 @@
   "Buffer transformation with lisp"
   :prefix "metamorph-"
   :link '(url-link :tag "Github" "https://github.com/AdamNiederer/metamorph")
-  :link '(emacs-commentary-link :tag "Commentary" "metamorph"))
+  :link '(emacs-commentary-link :tag "Commentary" "metamorph")
+  :group 'convenience)
 
 (defface metamorph-preview-face
   '((t :background "dark slate gray"))
@@ -106,10 +107,8 @@
 
 (defun metamorph-apply-changes ()
   "Clean up all overlays created in the preview process."
-  (message "%s" metamorph-ols)
   (dolist (ol metamorph-ols)
     (with-current-buffer metamorph-buffer
-      (message "%s" ol)
       (save-excursion
         (delete-region (ov-beg ol) (ov-end ol))
         (goto-char (ov-beg ol))
