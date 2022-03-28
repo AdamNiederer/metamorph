@@ -6,7 +6,7 @@
 ;; URL: http://github.com/AdamNiederer/metamorph
 ;; Version: 0.1
 ;; Keywords: metaprogramming wp
-;; Package-Requires: ((emacs "26.1") (ov "1.0.6"))
+;; Package-Requires: ((emacs "26.1"))
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -30,8 +30,6 @@
 ;; "metamorph--".
 
 ;;; Code:
-
-(require 'ov)
 
 (defgroup metamorph nil
   "Buffer transformation with lisp"
@@ -69,11 +67,12 @@
 
 (defun metamorph--preview-re (input)
   "Preview the text that will be selected by INPUT."
-  (ov-reset metamorph-ols)
+  (mapcar #'delete-overlay metamorph-ols)
   (with-current-buffer metamorph-buffer
     (let ((ols (condition-case err (ov-regexp input) ('error))))
-      (setq metamorph-ols (sort ols (lambda (a b) (< (ov-beg a) (ov-beg b)))))))
-  (ov-set metamorph-ols 'face 'metamorph-preview-face))
+      (setq metamorph-ols (sort ols (lambda (a b) (< (overlay-start a) (overlay-start b)))))))
+  (dolist (ol metamorph-ols)
+    (overlay-put ol 'face 'metamorph-preview-face)))
 
 (defun metamorph--preview-tx (input &optional unsafe)
   "Preview the result of evaling INPUT on all selected text, evaling it unsafely if UNSAFE."
@@ -82,13 +81,12 @@
       (let* ((ol (car ol-and-index))
              (result (metamorph--eval
                       input
-                      (buffer-substring (ov-beg ol) (ov-end ol))
+                      (buffer-substring (overlay-start ol) (overlay-end ol))
                       (cadr ol-and-index)
                       (length metamorph-ols)
                       unsafe)))
-        (ov-set ol 'before-string (propertize "[" 'face metamorph-preview-face))
-        (ov-set ol 'after-string (propertize (concat " => " result "]")
-                                                    'face metamorph-preview-face))))))
+        (overlay-put ol 'before-string (propertize "[" 'face 'metamorph-preview-face))
+        (overlay-put ol 'after-string (propertize (concat " => " result "]") 'face 'metamorph-preview-face))))))
 
 (defun metamorph--eval (to-eval content idx len &optional unsafe)
   "Eval TO-EVAL with CONTENT, IDX and LEN, and read CONTENT if UNSAFE is set."
@@ -99,85 +97,62 @@
 
 ;;;###autoload
 (defun metamorph-cleanup ()
-  "Clean up all overlays created in the preview process."
+  "Clean up all overlays created in the preview process and reset all variables."
   (interactive)
-  (ov-reset metamorph-ols)
+  (mapcar #'delete-overlay metamorph-ols)
   (setq metamorph-ols nil)
   (setq metamorph-buffer nil))
 
-(defun metamorph-apply-changes ()
+(defun metamorph--apply-changes ()
   "Clean up all overlays created in the preview process."
   (dolist (ol metamorph-ols)
     (with-current-buffer metamorph-buffer
       (save-excursion
-        (delete-region (ov-beg ol) (ov-end ol))
-        (goto-char (ov-beg ol))
+        (delete-region (overlay-start ol) (overlay-end ol))
+        (goto-char (overlay-start ol))
         (insert (substring (overlay-get ol 'after-string) (length " => ") (1- (length (overlay-get ol 'after-string))))))))
   (metamorph-cleanup))
 
 (defun metamorph--preview-re-hook ()
-  "Add an after-change hook and some cleanup functions to the minibuffer."
-  ;; TODO: Can we hook to C-g? We need to clean up these overlays on abort somehow.
+  "Preview the strings matched by the user-supplied regex."
   (add-hook 'after-change-functions (lambda (&rest _) (metamorph--preview-re (minibuffer-contents))) nil 'local))
 
-(defun metamorph--preview-tx-hook ()
-  "Add as an after-change hook and some cleanup functions to the minibuffer."
-  ;; TODO: Can we hook to C-g? We need to clean up these overlays on abort somehow.
-  (add-hook 'after-change-functions (lambda (&rest _) (metamorph--preview-tx (minibuffer-contents))) nil 'local))
-
-(defun metamorph--preview-tx-unsafe-hook ()
-  "Add as an after-change hook and some cleanup functions to the minibuffer."
-  ;; TODO: Can we hook to C-g? We need to clean up these overlays on abort somehow.
-  (add-hook 'after-change-functions (lambda (&rest _) (metamorph--preview-tx (minibuffer-contents) t)) nil 'local))
+(defun metamorph--preview-tx-hook (unsafe)
+  "Preview tne transformation, evaluating matches if UNSAFE is set."
+  (add-hook 'after-change-functions (lambda (&rest _) (metamorph--preview-tx (minibuffer-contents) unsafe)) nil 'local))
 
 ;;;###autoload
-(defun metamorph-map-region ()
+(defun metamorph-map-region (unsafe)
   "Replace all strings matching REGEX, with the result of TRANSFORM.
 
 TRANSFORM can be any Lisp expression.  The result is stringified
 via `prin1-to-string' before being placed in the buffer.  The
 following values may be used in TRANSFORM:
 
-- % is the raw matched string without any additional processing
-- %i is the matched string converted to an integer
-- %0 is an index which starts at zero, and increments for each match
-- %n is the number of matched strings
+- ~%~ is the matched string without any additional processing
+- ~%i~ is the matched string's value as an integer
+- ~%0~ is an index which starts at zero, and increments for each match
+- ~%n~ is the total number of matches
 
-This function does not read or evaluate any buffer contents
-without explicit user direction, and is therefore safe to use on
-untrusted buffers.  For more power, try `metamorph-map-region-unsafe'."
-  (interactive)
+Additionally, if a prefix argument is specified, the following
+values may be used in TRANSFORM:
+
+- ~%!~ is the matched string's value as a lisp expression
+
+This function reads and evaluates buffer contents as executable
+code if and only if both a prefix argument is supplied, and %! is
+present in TRANSFORM."
+  (interactive "P")
   (setq metamorph-buffer (current-buffer))
-  (minibuffer-with-setup-hook #'metamorph--preview-re-hook
-    (read-string "Transform regex: "))
-  (minibuffer-with-setup-hook #'metamorph--preview-tx-hook
-    (read-string "Transformation: "))
-  (metamorph-apply-changes))
-
-;;;###autoload
-(defun metamorph-map-region-unsafe ()
-  "Replace all strings matching REGEX, with the result of TRANSFORM.
-
-TRANSFORM can be any Lisp expression.  The result is stringified
-via `prin1-to-string' before being placed in the buffer.  The
-following values may be used in TRANSFORM:
-
-- % is the raw matched string without any additional processing
-- %i is the matched string converted to an integer
-- %! is the value of the string as a Lisp expression
-- %0 is an index which starts at zero, and increments for each match
-- %n is the number of matched strings
-
-Because % is read and evaluated as a Lisp expression, consider
-using `metamorph-map-region' on untrusted buffers, or buffers
-containing Emacs Lisp code."
-  (interactive)
-  (setq metamorph-buffer (current-buffer))
-  (minibuffer-with-setup-hook #'metamorph--preview-re-hook
-    (read-string "Transform regex: "))
-  (minibuffer-with-setup-hook #'metamorph--preview-tx-unsafe-hook
-    (read-string "Transformation: "))
-  (metamorph-apply-changes))
+  (let ((inhibit-quit t))
+    (if (with-local-quit
+          (minibuffer-with-setup-hook #'metamorph--preview-re-hook
+            (read-string "Transform regex: "))
+          (minibuffer-with-setup-hook (lambda () (metamorph--preview-tx-hook unsafe))
+            (read-string "Transformation: "))
+          t)
+        (metamorph--apply-changes)
+      (metamorph-cleanup))))
 
 (provide 'metamorph)
 
